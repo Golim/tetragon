@@ -93,6 +93,8 @@ const (
 
 	KeyHealthServerAddress = "health-server-address"
 	KeyHealthTimeInterval  = "health-server-interval"
+
+	KeyProcessCacheStaleInterval = "process-cache-stale-interval"
 )
 
 func ReadAndSetFlags() error {
@@ -174,6 +176,9 @@ func ReadAndSetFlags() error {
 
 	Config.HealthServerAddress = viper.GetString(KeyHealthServerAddress)
 	Config.HealthServerInterval = viper.GetInt(KeyHealthTimeInterval)
+
+	Config.ProcessCacheStaleInterval = viper.GetDuration(KeyProcessCacheStaleInterval)
+
 	return nil
 }
 
@@ -282,4 +287,6 @@ func AddFlags(flags *pflag.FlagSet) {
 
 	flags.String(KeyHealthServerAddress, ":6789", "Health server address (e.g. ':6789')(use '' to disabled it)")
 	flags.Int(KeyHealthTimeInterval, 10, "Health server interval in seconds")
+
+	flags.Duration(KeyProcessCacheStaleInterval, defaults.DefaultProcessCacheStaleInterval, "Interval between stale process cache checks")
 }

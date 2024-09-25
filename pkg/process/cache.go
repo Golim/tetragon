@@ -12,14 +12,17 @@ import (
 	"github.com/cilium/tetragon/pkg/logger"
 	"github.com/cilium/tetragon/pkg/metrics/errormetrics"
 	"github.com/cilium/tetragon/pkg/metrics/mapmetrics"
+	"github.com/cilium/tetragon/pkg/metrics/processexecmetrics"
+	"github.com/cilium/tetragon/pkg/option"
 	lru "github.com/hashicorp/golang-lru/v2"
 )
 
 type Cache struct {
-	cache      *lru.Cache[string, *ProcessInternal]
-	size       int
-	deleteChan chan *ProcessInternal
-	stopChan   chan bool
+	cache                 *lru.Cache[string, *ProcessInternal]
+	size                  int
+	deleteChan            chan *ProcessInternal
+	stopChan              chan bool
+	staleIntervalLastTime time.Time
 }
 
 // garbage collection states
@@ -30,9 +33,19 @@ const (
 	deleted
 )
 
-// garbage collection run interval
+var colorStr = map[int]string{
+	inUse:         "inUse",
+	deletePending: "deletePending",
+	deleteReady:   "deleteReady",
+	deleted:       "deleted",
+}
+
 const (
+	// garbage collection run interval
 	intervalGC = time.Second * 30
+	// garbage collection stale entry max time.
+	// If a stale entry is older than the max time, then it will be removed.
+	staleIntervalMaxTime = time.Minute * 10
 )
 
 func (pc *Cache) cacheGarbageCollector() {
@@ -82,6 +95,12 @@ func (pc *Cache) cacheGarbageCollector() {
 					}
 				}
 				deleteQueue = newQueue
+				// Check if it is time to clean stale entries.
+				if option.Config.ProcessCacheStaleInterval > 0 &&
+					pc.staleIntervalLastTime.Add(time.Duration(option.Config.ProcessCacheStaleInterval)*time.Minute).Before(time.Now()) {
+					pc.cleanStaleEntries()
+					pc.staleIntervalLastTime = time.Now()
+				}
 			case p := <-pc.deleteChan:
 				// duplicate deletes can happen, if they do reset
 				// color to pending and move along. This will cause
@@ -107,6 +126,31 @@ func (pc *Cache) cacheGarbageCollector() {
 	}()
 }
 
+func (pc *Cache) cleanStaleEntries() {
+	var deleteProcesses []*ProcessInternal
+	for _, v := range pc.cache.Values() {
+		v.refcntOpsLock.Lock()
+		if processAndChildrenHaveExited(v) && !v.exitTime.IsZero() && v.exitTime.Add(staleIntervalMaxTime).Before(time.Now()) {
+			deleteProcesses = append(deleteProcesses, v)
+		}
+		v.refcntOpsLock.Unlock()
+	}
+	for _, d := range deleteProcesses {
+		processexecmetrics.ProcessCacheRemovedStaleInc()
+		pc.remove(d.process)
+	}
+}
+
+// Must be called with a lock held on p.refcntOpsLock
+func processAndChildrenHaveExited(p *ProcessInternal) bool {
+	return p.refcntOps["process++"] == p.refcntOps["process--"] &&
+		p.refcntOps["parent++"] == p.refcntOps["parent--"]
+}
+
+func processOrChildExit(reason string) bool {
+	return reason == "process--" || reason == "parent--"
+}
+
 func (pc *Cache) deletePending(process *ProcessInternal) {
 	pc.deleteChan <- process
 }
@@ -115,6 +159,11 @@ func (pc *Cache) refDec(p *ProcessInternal, reason string) {
 	p.refcntOpsLock.Lock()
 	// count number of times refcnt is decremented for a specific reason (i.e. process, parent, etc.)
 	p.refcntOps[reason]++
+	// if this is a process/child exit, check if the process and all its children have exited.
+	// If so, store the exit time so we can tell if this process becomes a stale entry.
+	if processOrChildExit(reason) && processAndChildrenHaveExited(p) {
+		p.exitTime = time.Now()
+	}
 	p.refcntOpsLock.Unlock()
 	ref := atomic.AddUint32(&p.refcnt, ^uint32(0))
 	if ref == 0 {
@@ -147,8 +196,9 @@ func NewCache(
 		return nil, err
 	}
 	pm := &Cache{
-		cache: lruCache,
-		size:  processCacheSize,
+		cache:                 lruCache,
+		size:                  processCacheSize,
+		staleIntervalLastTime: time.Now(),
 	}
 	pm.cacheGarbageCollector()
 	return pm, nil

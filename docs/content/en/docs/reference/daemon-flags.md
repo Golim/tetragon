@@ -49,6 +49,7 @@ Flags:
       --metrics-server string                     Metrics server address (e.g. ':2112'). Disabled by default
       --netns-dir string                          Network namespace dir (default "/var/run/docker/netns/")
       --process-cache-size int                    Size of the process cache (default 65536)
+      --process-cache-stale-interval duration     Interval between stale process cache checks (default 1h0m0s)
       --procfs string                             Location of procfs to consume existing PIDs (default "/proc/")
       --rb-queue-size string                      Set size of channel between ring buffer and sensor go routines (default 65k, allows K/M/G suffix) (default "65535")
       --rb-size string                            Set perf ring buffer size for single cpu (default 65k, allows K/M/G suffix) (default "0")

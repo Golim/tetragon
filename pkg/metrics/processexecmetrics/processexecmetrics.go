@@ -21,11 +21,17 @@ var (
 		Help:        "The total of times an error occurs due to a parent and child process have the same exec id.",
 		ConstLabels: nil,
 	}, []string{"exec_id"})
+	ProcessCacheRemovedStale = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: consts.MetricsNamespace,
+		Name:      "process_cache_removed_stale_total",
+		Help:      "Number of process cache stale entries removed.",
+	})
 )
 
 func InitMetrics(registry *prometheus.Registry) {
 	registry.MustRegister(MissingParentErrors)
 	registry.MustRegister(SameExecIdErrors)
+	registry.MustRegister(ProcessCacheRemovedStale)
 }
 
 // Get a new handle on the missingParentErrors metric for an execId
@@ -46,4 +52,9 @@ func GetSameExecId(execId string) prometheus.Counter {
 // Increment the sameExecIdErrors metric for an execId
 func SameExecIdInc(execId string) {
 	GetSameExecId(execId).Inc()
+}
+
+// Increment the ProcessCacheRemovedStale metric
+func ProcessCacheRemovedStaleInc() {
+	ProcessCacheRemovedStale.Inc()
 }

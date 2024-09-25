@@ -3,6 +3,8 @@
 
 package defaults
 
+import "time"
+
 const (
 	// DefaultMapRoot is the default path where BPFFS should be mounted
 	DefaultMapRoot = "/sys/fs/bpf"
@@ -42,6 +44,9 @@ const (
 
 	// Default secure export logs permissions
 	DefaultLogsPermission = "600"
+
+	// defaults for process cache
+	DefaultProcessCacheStaleInterval = time.Duration(60 * time.Minute)
 )
 
 var (

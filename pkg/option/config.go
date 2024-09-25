@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/cilium/tetragon/pkg/defaults"
 	"github.com/cilium/tetragon/pkg/logger"
 	"github.com/cilium/tetragon/pkg/metrics/consts"
 	"github.com/spf13/viper"
@@ -89,6 +90,8 @@ type config struct {
 
 	HealthServerAddress  string
 	HealthServerInterval int
+
+	ProcessCacheStaleInterval time.Duration
 }
 
 var (
@@ -112,6 +115,9 @@ var (
 			}
 			return result
 		}(),
+
+		// set default values for the process cache
+		ProcessCacheStaleInterval: defaults.DefaultProcessCacheStaleInterval,
 	}
 )
 

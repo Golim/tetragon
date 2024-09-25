@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/cilium/tetragon/pkg/fieldfilters"
 	"github.com/cilium/tetragon/pkg/metrics/errormetrics"
@@ -62,6 +63,8 @@ type ProcessInternal struct {
 	refcntOps map[string]int32
 	// protects the refcntOps map
 	refcntOpsLock sync.Mutex
+	// the time the process and all children exited
+	exitTime time.Time
 }
 
 var (
