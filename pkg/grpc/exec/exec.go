@@ -407,7 +407,7 @@ func GetProcessExit(event *MsgExitEventUnix) *tetragon.ProcessExit {
 		ec.Add(nil, tetragonEvent, event.Common.Ktime, event.ProcessKey.Ktime, event)
 		return nil
 	}
-	if parent != nil {
+	if proc != nil && !proc.HasCustomRefCnt() && parent != nil {
 		parent.RefDec("parent")
 	}
 	if proc != nil {
@@ -428,10 +428,14 @@ func (msg *MsgExitEventUnix) Notify() bool {
 func (msg *MsgExitEventUnix) RetryInternal(ev notify.Event, timestamp uint64) (*process.ProcessInternal, error) {
 	internal, parent := process.GetParentProcessInternal(msg.ProcessKey.Pid, timestamp)
 	var err error
+	hasCustomRefCnt := false
+	if internal != nil && internal.HasCustomRefCnt() {
+		hasCustomRefCnt = true
+	}
 
 	if parent != nil {
 		ev.SetParent(parent.UnsafeGetProcess())
-		if !msg.RefCntDone[ParentRefCnt] {
+		if !hasCustomRefCnt && !msg.RefCntDone[ParentRefCnt] {
 			parent.RefDec("parent")
 			msg.RefCntDone[ParentRefCnt] = true
 		}
@@ -500,9 +504,13 @@ func (msg *MsgProcessCleanupEventUnix) Notify() bool {
 func (msg *MsgProcessCleanupEventUnix) RetryInternal(_ notify.Event, timestamp uint64) (*process.ProcessInternal, error) {
 	internal, parent := process.GetParentProcessInternal(msg.PID, timestamp)
 	var err error
+	hasCustomRefCnt := false
+	if internal != nil && internal.HasCustomRefCnt() {
+		hasCustomRefCnt = true
+	}
 
 	if parent != nil {
-		if !msg.RefCntDone[ParentRefCnt] {
+		if !hasCustomRefCnt && !msg.RefCntDone[ParentRefCnt] {
 			parent.RefDec("parent")
 			msg.RefCntDone[ParentRefCnt] = true
 		}
@@ -532,7 +540,9 @@ func (msg *MsgProcessCleanupEventUnix) Retry(_ *process.ProcessInternal, _ notif
 func (msg *MsgProcessCleanupEventUnix) HandleMessage() *tetragon.GetEventsResponse {
 	msg.RefCntDone = [2]bool{false, false}
 	if process, parent := process.GetParentProcessInternal(msg.PID, msg.Ktime); process != nil && parent != nil {
-		parent.RefDec("parent")
+		if !process.HasCustomRefCnt() {
+			parent.RefDec("parent")
+		}
 		process.RefDec("process")
 	} else {
 		if ec := eventcache.Get(); ec != nil {

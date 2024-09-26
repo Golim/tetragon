@@ -65,6 +65,16 @@ type ProcessInternal struct {
 	refcntOpsLock sync.Mutex
 	// the time the process and all children exited
 	exitTime time.Time
+	// Whether this process has custom refcnts (not "process" or "parent").
+	// This cascades on fork, but is reset on exec. The purpose is to delay reducing the
+	// refcnt on a processes' parent on exit, to when the process itself has a refcnt of 0.
+	// The result is that any process that has this flag set will keep itself and all its
+	// forked (but not exec) descendants in the cache after they have exited, until all the
+	// (non-exec) descendants have exited (as any forked descendant could potentially cause
+	// an action that is attributed to the process and we need it in the cache in order to
+	// report it). This serves to prevent entries being removed by the stale entry GC until
+	// all (non-exec) descendants have exited.
+	customRefcnt bool
 }
 
 var (
@@ -127,6 +137,8 @@ func (pi *ProcessInternal) cloneInternalProcessCopy() *ProcessInternal {
 		apiBinaryProp: pi.apiBinaryProp,
 		namespaces:    pi.namespaces,
 		refcnt:        1, // Explicitly initialize refcnt to 1
+		refcntOps:     map[string]int32{"process++": 1},
+		customRefcnt:  pi.customRefcnt,
 	}
 }
 
@@ -147,6 +159,10 @@ func (pi *ProcessInternal) putProcess() {
 
 func (pi *ProcessInternal) UnsafeGetProcess() *tetragon.Process {
 	return pi.process
+}
+
+func (pi *ProcessInternal) HasCustomRefCnt() bool {
+	return pi.customRefcnt
 }
 
 // UpdateExecOutsideCache() checks if we must augment the ProcessExec.Process
@@ -357,6 +373,8 @@ func initProcessInternalExec(
 		apiBinaryProp: apiBinaryProp,
 		namespaces:    apiNs,
 		refcnt:        1,
+		refcntOps:     map[string]int32{"process++": 1},
+		customRefcnt:  false,
 	}
 }
 
