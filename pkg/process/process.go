@@ -53,6 +53,15 @@ type ProcessInternal struct {
 	// garbage collector metadata
 	color  int // Writes should happen only inside gc select channel
 	refcnt uint32
+	// refcntOps is a map of operations to refcnt change
+	// keys can be:
+	// - "process++": process increased refcnt (i.e. this process starts)
+	// - "process--": process decreased refcnt (i.e. this process exits)
+	// - "parent++": parent increased refcnt (i.e. a process starts that has this process as a parent)
+	// - "parent--": parent decreased refcnt (i.e. a process exits that has this process as a parent)
+	refcntOps map[string]int32
+	// protects the refcntOps map
+	refcntOpsLock sync.Mutex
 }
 
 var (
@@ -208,12 +217,12 @@ func (pi *ProcessInternal) AnnotateProcess(cred, ns bool) error {
 	return nil
 }
 
-func (pi *ProcessInternal) RefDec() {
-	procCache.refDec(pi)
+func (pi *ProcessInternal) RefDec(reason string) {
+	procCache.refDec(pi, fmt.Sprintf("%s--", reason))
 }
 
-func (pi *ProcessInternal) RefInc() {
-	procCache.refInc(pi)
+func (pi *ProcessInternal) RefInc(reason string) {
+	procCache.refInc(pi, fmt.Sprintf("%s++", reason))
 }
 
 func (pi *ProcessInternal) RefGet() uint32 {
@@ -457,7 +466,7 @@ func AddCloneEvent(event *tetragonAPI.MsgCloneEvent) (*ProcessInternal, error) {
 		return nil, err
 	}
 
-	parent.RefInc()
+	parent.RefInc("parent")
 	procCache.add(proc)
 	return proc, nil
 }

@@ -111,14 +111,22 @@ func (pc *Cache) deletePending(process *ProcessInternal) {
 	pc.deleteChan <- process
 }
 
-func (pc *Cache) refDec(p *ProcessInternal) {
+func (pc *Cache) refDec(p *ProcessInternal, reason string) {
+	p.refcntOpsLock.Lock()
+	// count number of times refcnt is decremented for a specific reason (i.e. process, parent, etc.)
+	p.refcntOps[reason]++
+	p.refcntOpsLock.Unlock()
 	ref := atomic.AddUint32(&p.refcnt, ^uint32(0))
 	if ref == 0 {
 		pc.deletePending(p)
 	}
 }
 
-func (pc *Cache) refInc(p *ProcessInternal) {
+func (pc *Cache) refInc(p *ProcessInternal, reason string) {
+	p.refcntOpsLock.Lock()
+	// count number of times refcnt is increamented for a specific reason (i.e. process, parent, etc.)
+	p.refcntOps[reason]++
+	p.refcntOpsLock.Unlock()
 	atomic.AddUint32(&p.refcnt, 1)
 }
 
