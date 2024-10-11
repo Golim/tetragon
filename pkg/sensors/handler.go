@@ -5,6 +5,7 @@ package sensors
 
 import (
 	"fmt"
+	"sort"
 
 	slimv1 "github.com/cilium/cilium/pkg/k8s/slim/k8s/apis/meta/v1"
 	"github.com/cilium/tetragon/pkg/policyfilter"
@@ -133,6 +134,17 @@ func (h *handler) addTracingPolicy(op *tracingPolicyAdd) error {
 		col.state = LoadErrorState
 		return err
 	}
+	sort.Slice(sensors, func(i, j int) bool {
+		iName := sensors[i].GetName()
+		if iName == "__enforcer__" {
+			return true
+		}
+		jName := sensors[j].GetName()
+		if jName == "__enforcer__" {
+			return false
+		}
+		return iName < jName
+	})
 	col.sensors = make([]SensorIface, 0, len(sensors))
 	col.sensors = append(col.sensors, sensors...)
 	col.state = LoadingState
